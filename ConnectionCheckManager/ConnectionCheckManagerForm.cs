@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Newtonsoft.Json;
+using StackExchange.Redis;
 using Tekla.Structures.Model;
 
 namespace ConnectionCheckManager
@@ -12,22 +13,39 @@ namespace ConnectionCheckManager
 	public partial class ConnectionCheckManagerForm : Form
 	{
 		private readonly Model _model;
+		private readonly ConnectionMultiplexer _redis;
 
 		public ConnectionCheckManagerForm()
 		{
 			try
 			{
+				_redis = ConnectionMultiplexer.Connect("localhost");
+
 				InitializeComponent();
 
 				_model = new Model();
 				if (!_model.GetConnectionStatus()) return;
 
 				RefreshUi();
+
+				RefreshDatabase();
 			}
 			catch(Exception ex)
 			{
 				Trace.WriteLine(ex.Message + ex.InnerException + ex.StackTrace);
 			}
+		}
+
+		private void RefreshDatabase()
+		{
+			var db = _redis.GetDatabase();
+
+			var connectionCheckViews = GetConnectionCheckViews();
+
+			connectionCheckViews.ForEach(c =>
+			{
+				db.StringSetAsync(c.GUID, JsonConvert.SerializeObject(c, Formatting.Indented));
+			});
 		}
 
 		private void RefreshUi()
@@ -69,10 +87,9 @@ namespace ConnectionCheckManager
 
 		private List<ConnectionCheckSummary> GetConnectionCheckViews()
 		{
-			var folder = FolderPath();
-			var fileNames = Directory.EnumerateFiles(FolderPath());
+			var fileNames = GetFilenames();
 
-			var result = fileNames.Select(f =>
+			return fileNames.Select(f =>
 				{
 					var guid = f.Split('\\').LastOrDefault()?.Split('.').FirstOrDefault();
 					var connectionCheckResults = ReadConnectionCheckHistory(f);
@@ -84,8 +101,12 @@ namespace ConnectionCheckManager
 					};
 				})
 			.ToList();
+		}
 
-			return result;
+		private List<string> GetFilenames()
+		{
+			var folder = FolderPath();
+			return Directory.EnumerateFiles(FolderPath()).ToList();
 		}
 
 		private string FolderPath()
