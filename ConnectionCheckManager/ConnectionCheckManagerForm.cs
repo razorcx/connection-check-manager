@@ -55,24 +55,30 @@ namespace ConnectionCheckManager
 				.GetAllObjectsWithType(ModelObject.ModelObjectEnum.CONNECTION)
 				.ToList();
 
-			var connectionCheckResults = ConnectionConnectionCheckResults();
+			var connectionCheckResults = ConnectionCheckResults();
 
 			var summary = connections.Select(c => new
 				{
 					Connection = c,
 					ConnectionCheckPlugin =
-					connectionCheckResults.FirstOrDefault(cc => cc?.Connection?.Identifier?.GUID == c?.Identifier?.GUID)
+						connectionCheckResults.FirstOrDefault(cc => cc?.Connection?.Identifier?.GUID == c?.Identifier?.GUID)
 				})
 				.ToList();
 
 			textBoxWithPluginCount.Text = summary.Count(c => c.ConnectionCheckPlugin != null).ToString();
 			textBoxWithoutPluginCount.Text = summary.Count(c => c.ConnectionCheckPlugin == null).ToString();
 
+			var results = summary
+				.Where(c => c.ConnectionCheckPlugin != null)
+				.Select(c => c.ConnectionCheckPlugin)
+				.OrderByDescending(c => c.Date)
+				.ToList();
+
 			this.dataGridViewConnectionCheckingSummary.DataSource 
-				= GetConnectionCheckView(ConnectionConnectionCheckResults());
+				= GetConnectionCheckView(results);
 		}
 
-		private List<ConnectionCheckResult> ConnectionConnectionCheckResults()
+		private List<ConnectionCheckResult> ConnectionCheckResults()
 		{
 			var connectionViews = GetConnectionCheckViews();
 
@@ -89,7 +95,7 @@ namespace ConnectionCheckManager
 		{
 			var fileNames = GetFilenames();
 
-			return fileNames.Select(f =>
+			return fileNames.AsParallel().Select(f =>
 				{
 					var guid = f.Split('\\').LastOrDefault()?.Split('.').FirstOrDefault();
 					var connectionCheckResults = ReadConnectionCheckHistory(f);
